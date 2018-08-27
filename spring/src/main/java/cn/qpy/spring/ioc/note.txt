@@ -1,0 +1,93 @@
+spring ioc容器启动源码解析:
+	ApplicationContext ctx = new ClassPathXmlApplicationContext(appConfPath);
+	1.0:调用ClassPathXmlApplicationContext的全量构造器ClassPathXmlApplicationContext(String[] configLocations, boolean refresh, ApplicationContext parent)
+			1.1:调用AbstractApplicationContext的构造器AbstractApplicationContext(ApplicationContext parent)设置父容器(为空)
+			1.2:调用AbstractRefreshableConfigApplicationContext的setConfigLocations(String... locations)设置容器启动配置文件路径
+			1.3:调用AbstractApplicationContext的refresh()方法
+    2.0:调用AbstractApplicationContext的refresh()方法
+    	2.1:调用AbstractApplicationContext的prepareRefresh();
+    		记录容器启动时间，设置容器状态等
+    	2.2:调用AbstractApplicationContext的obtainFreshBeanFactory();
+    		2.2.1:调用AbstractRefreshableApplicationContext的refreshBeanFactory()
+    			2.2.1.1:判断AbstractRefreshableApplicationContext成员变量beanFactory是否为空，即之前是否有创建ioc容器(没有)，有则销毁
+    			2.2.1.2:调用AbstractRefreshableApplicationContext的createBeanFactory()
+    				2.2.1.2.1:调用DefaultListableBeanFactory的全量构造器DefaultListableBeanFactory(BeanFactory parentBeanFactory)创建一个简化版ioc容器(parentBeanFactory为空，后面称这个ioc容器是阉割版ioc容器)
+    			2.2.1.3:调用AbstractRefreshableApplicationContext的customizeBeanFactory(DefaultListableBeanFactory beanFactory)配置阉割版ioc容器的部分属性
+    			2.2.1.4:调用AbstractXmlApplicationContext的loadBeanDefinitions(DefaultListableBeanFactory beanFactory)
+    				该方法大体执行以下几步
+    				1:XmlBeanDefinitionReader加载配置文件
+					2:DefaultBeanDefinitionDocumentReader解析文件内容
+					3:BeanDefinitionReaderUtils过渡
+					4:DefaultListableBeanFactory注册
+					前三步将配置文件中的所有bean定义全部转化为BeanDefinition对象
+					第四步中调用了DefaultListableBeanFactory的registerBeanDefinition(String beanName, BeanDefinition beanDefinition)
+    				该方法中将传入的BeanDefinition对象和beanName都存到beanDefinitionMap和beanDefinitionNames中，即已经注册在阉割版ioc容器中
+    	2.3:用2.2返回的工厂对象为参数调用AbstractApplicationContext的prepareBeanFactory(ConfigurableListableBeanFactory beanFactory)
+    		该方法为ioc容器配置了某些属性，同时往ioc容器中放入ApplicationContextAwareProcessor等部分BeanPostProcessor的注册和部分系统单例类的注册(这里的注册并不在阉割版ioc容器中，而在整个ioc容器中，且这些注册同时完成了bean的实例化)
+    	2.4:用2.3返回的工厂对象为参数调用AbstractApplicationContext的invokeBeanFactoryPostProcessors(ConfigurableListableBeanFactory beanFactory)
+    		2.4.1:调用PostProcessorRegistrationDelegate的invokeBeanFactoryPostProcessors(ConfigurableListableBeanFactory beanFactory, List<BeanFactoryPostProcessor> beanFactoryPostProcessors)
+	    		需要处理四种类型的bean:
+	    			1.非配置文件载入的BeanFactoryPostProcessor(实现BeanDefinitionRegistryPostProcessor子接口)
+	    			2.非配置文件载入的BeanFactoryPostProcessor(未实现BeanDefinitionRegistryPostProcessor子接口)
+	    			3.配置文件载入的BeanFactoryPostProcessor(实现BeanDefinitionRegistryPostProcessor子接口)
+	    			4.配置文件载入的BeanFactoryPostProcessor(未实现BeanDefinitionRegistryPostProcessor子接口)
+		    		前面两种bean之前在ioc容器中已完成了注册
+	    		2.4.1.1:调用第1类bean的postProcessBeanDefinitionRegistry(BeanDefinitionRegistry registry)
+	    		2.4.1.2:借助阉割版ioc容器触发getBean(..)完成第3类bean实例化，并调用bean的postProcessBeanDefinitionRegistry(BeanDefinitionRegistry registry)
+	    				这里实现了PriorityOrdered接口的第3类bean按优先级最先调用，之后是实现了Ordered接口的第3类bean调用，最后是其他第3类bean
+	    		2.4.1.3:调用1类bean的postProcessBeanFactory(ConfigurableListableBeanFactory beanFactory)
+	    		2.4.1.3:调用3类bean的postProcessBeanFactory(ConfigurableListableBeanFactory beanFactory)
+	    				这里实现了PriorityOrdered接口的第3类bean按优先级最先调用，之后是实现了Ordered接口的第3类bean调用，最后是其他第3类bean
+	    		2.4.1.3:调用2类bean的postProcessBeanFactory(ConfigurableListableBeanFactory beanFactory)
+	    		2.4.1.4:借助阉割版ioc容器触发getBean(..)完成第4类bean实例化，并调用bean的postProcessBeanFactory(ConfigurableListableBeanFactory beanFactory)
+	    				这里实现了PriorityOrdered接口的第4类bean按优先级最先调用，之后是实现了Ordered接口的第4类bean调用，最后是其他第4类bean
+      
+        2.5:用2.4返回的工厂对象为参数调用AbstractApplicationContext的registerBeanPostProcessors(ConfigurableListableBeanFactory beanFactory)
+    		2.5.1:调用PostProcessorRegistrationDelegate的registerBeanPostProcessors(ConfigurableListableBeanFactory beanFactory, AbstractApplicationContext applicationContext)    		
+	    		2.5.1.1:往ioc容器中注册BeanPostProcessorChecker这个BeanPostProcessor类的bean(在这里做了预先实例化)
+	    		2.5.1.2:借助阉割版ioc容器获取所有BeanPostProcessor类的bean定义进行下面的处理
+	    			2.5.1.2.1:往ioc容器中按优先级注册实现了PriorityOrdered接口的bean(在这里做了预先实例化)
+	    			2.5.1.2.2:往ioc容器中按优先级注册实现了Ordered接口的bean(在这里做了预先实例化)
+	    			2.5.1.2.3:往ioc容器中注册其他的bean(在这里做了预先实例化)
+	    			2.5.1.2.4:前三步中注册的bean如果实现了MergedBeanDefinitionPostProcessor接口，则在ioc容器中重新注册(不需要重新实例化)	
+	    		2.5.1.3:往ioc容器中注册ApplicationListenerDetector这个BeanPostProcessor类的bean
+   	    2.6:调用AbstractApplicationContext的initMessageSource()
+   	    	该方法为ioc容器配置了消息源，同时往ioc容器中注册了一个消息源bean(在这里做了预先实例化)
+   	    2.7:调用AbstractApplicationContext的initApplicationEventMulticaster()
+   	    	该方法为ioc容器配置了事件广播器，同时往ioc容器中注册了一个事件广播器bean(在这里做了预先实例化)
+   	    2.8:调用AbstractApplicationContext的onRefresh()
+   	    	该方法自身为空，只用于拓展，用于为ioc容器注册一些特殊的bean
+   	    2.9:调用AbstractApplicationContext的registerListeners()
+   	    	如果之前有应用监听器(ApplicationListener)被ioc容器注册，该方法将该应用监听器加入到ioc容器的事件广播器的监听器列表中
+   	    	如果之前有应用监听器(ApplicationListener)被阉割版ioc容器注册，该方法将该应用监听器的名字加入到ioc容器的事件广播器的监听器名字列表中(该应用监听器在这里不进行实例化)
+   		3.0:调用AbstractApplicationContext的finishBeanFactoryInitialization(ConfigurableListableBeanFactory beanFactory)
+   			3.0.1:如果阉割版ioc容器中注册了一个特殊的ConversionService类型的bean(名为:conversionService)，触发阉割版ioc容器的getBean(..)完成bean实例化，同时配置阉割版ioc容器的转换服务
+   			3.0.2:如果阉割版ioc容器中注册了LoadTimeWeaverAware类型的bean，依次触发阉割版ioc容器的getBean(..)完成bean实例化
+   			3.0.3:冻结阉割版ioc容器的配置
+   			3.0.4:调用DefaultListableBeanFactory的preInstantiateSingletons()
+   				3.0.4.1:对于阉割版ioc注册的所有非抽象且单例且即时加载的bean，共分为三类:
+	    			1.SmartFactoryBean类bean(FactoryBean子接口)
+	    				这种bean会触发阉割版ioc容器的getBean(..)完成bean实例化(加&前缀)，同时如果这种bean产生的bean也是即时加载则也触发阉割版ioc容器的getBean(..)完成对应bean实例化
+	    			2.FactoryBean类且非SmartFactoryBean类bean
+	    				这种bean会触发阉割版ioc容器的getBean(..)完成bean实例化(加&前缀)
+	    			3.其他bean
+	    				这类bean会触发阉割版ioc容器的getBean(..)完成bean实例化
+	    		3.0.4.2:对于阉割版ioc注册的且已完成实例化的所有bean，如果实现了SmartInitializingSingleton接口则依次调用bean实例的afterSingletonsInstantiated()实现
+	    3.1:调用AbstractApplicationContext的finishRefresh()
+	    	3.1.1:调用AbstractApplicationContext的initLifecycleProcessor()
+	    		  该方法配置了ioc容器的lifecycleProcessor，同时往ioc容器中注册了这个DefaultLifecycleProcessor类的bean(在这里做了预先实例化)
+	    	3.1.2:调用DefaultLifecycleProcessor的onRefresh()
+	    		3.1.2.1:调用DefaultLifecycleProcessor的startBeans(boolean autoStartupOnly)
+	    			3.1.2.1.1:从阉割版ioc容器中取出所有Lifecycle类的bean
+	    			3.1.2.1.2:对于上一步所有的bean中挑出所有实现了SmartLifecycle接口且isAutoStartup()实现返回true的bean，把这个bean按照getPhase()实现返回的值(阶段标识值)分组(LifecycleGroup组)
+	    			3.1.2.1.3:对于上一步的所有LifecycleGroup组，按照阶段值顺序依次调用每个LifecycleGroup组的start()，该方法会对每个内部的实现了SmartLifecycle接口的bean按照自身实现触发执行逻辑
+	    		3.1.2.2:设置DefaultLifecycleProcessor的运行状态
+	    	3.1.3:发布ioc容器的容器刷新事件(ContextRefreshedEvent)
+	    		
+**********************************************************************************************************************************************************************
+spring AbstractBeanFactory的doGetBean(final String name, final Class<T> requiredType, final Object[] args, boolean typeCheckOnly)源码解析 	
+	1.0:调用AbstractBeanFactory的transformedBeanName(String name)
+		该方法取消别名的doGetBean(...)的影响，同时如果name以&为前缀则会去掉这个前缀得到真实名
+	2.0:未完待续
+   	
+   	
