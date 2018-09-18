@@ -13,7 +13,7 @@ public class TestBeanFactoryPostProcessor {
 	public void test() {
 		@SuppressWarnings("resource")
 		ApplicationContext ctx = new ClassPathXmlApplicationContext(appConfPath);
-		A a = (A) ctx.getBean(A.class);
+		A a = ctx.getBean(A.class);
 		System.out.println(a.getName());
 	}
 

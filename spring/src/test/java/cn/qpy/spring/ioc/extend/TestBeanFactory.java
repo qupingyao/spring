@@ -15,8 +15,8 @@ public class TestBeanFactory {
 		@SuppressWarnings({ "resource" })
 		ApplicationContext ctx = new ClassPathXmlApplicationContext(appConfPath);
 		System.out.println("spring context start success");
-		A a = (A) ctx.getBean("aFactory");
-		AFactory aFactory = (AFactory) ctx.getBean("&aFactory");
+		A a = ctx.getBean("aFactory", A.class);
+		AFactory aFactory = ctx.getBean("&aFactory", AFactory.class);
 		System.out.println(a.getName());
 		System.out.println(aFactory.getName());
 	}
